@@ -87,12 +87,24 @@ func (s *SamplrHTTP) SampleList(w http.ResponseWriter, r *http.Request, _ httpro
 }
 
 func (s *SamplrHTTP) ReadN(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+  name := params.ByName("name")
+  scount := params.ByName("count")
+
+  _,_ = name,scount
 }
 
 func (s *SamplrHTTP) ReadSince(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+  name := params.ByName("name")
+  stimestamp := params.ByName("timestamp")
+
+  _,_ = name,stimestamp
 }
 
 func (s *SamplrHTTP) ReadRange(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+  name := params.ByName("name")
+  stimerange := params.ByName("timerange")
+
+  _,_ = name,stimerange
 }
 
 func main() {
