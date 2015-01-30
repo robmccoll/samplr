@@ -167,7 +167,7 @@ func (s *Samplr) ReadNSamples(name string, count int) ([]*Sample,error) {
   rtn := make([]*Sample, 0, count)
 
   for i := 0; i < count; i++ {
-    rtn = append(rtn, set.Samples[len(set.Samples)-i])
+    rtn = append(rtn, set.Samples[len(set.Samples)-i-1])
   }
 
   set.Lock.RUnlock()

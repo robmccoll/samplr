@@ -1,78 +1,78 @@
 package main
 
 import (
-  "io/ioutil"
-  "fmt"
   "net/http"
-  "encoding/json"
+  "strconv"
+  "time"
 
   log "github.com/Sirupsen/logrus"
   "github.com/julienschmidt/httprouter"
 
-  "github.com/robmccoll/samplr/samplr"
+  "github.com/robmccoll/samplr/gosamplr"
 )
-
-func JSONRequest(w http.ResponseWriter, r *http.Request, obj interface{}) (isBad bool) {
-  if r.Body == nil {
-    JSONError(w, http.StatusBadRequest, "A JSON body is required.")
-    return true
-  }
-
-  body, err := ioutil.ReadAll(r.Body)
-  if r.Body == nil {
-    JSONError(w, http.StatusBadRequest, "A JSON body is required.")
-    return true
-  }
-
-  r.Body.Close()
-
-  err = json.Unmarshal(body, obj)
-  if err != nil {
-    JSONError(w, http.StatusBadRequest, "A JSON body is required.")
-    return true
-  }
-
-  return false
-}
-
-func JSONResponse(w http.ResponseWriter, code int, obj interface{}) {
-  rtn,err := json.Marshal(obj)
-  if err != nil {
-    w.WriteHeader(http.StatusInternalServerError)
-    w.Write([]byte(`{"error":"marshalling json obj failed"}`))
-    return
-  }
-
-  w.WriteHeader(code)
-  w.Write(rtn)
-}
-
-func JSONSuccess(w http.ResponseWriter, code int, s string, args ...interface{}) {
-  rtn,err := json.Marshal(fmt.Sprintf(s, args...))
-  if err != nil {
-    w.WriteHeader(http.StatusInternalServerError)
-    w.Write([]byte(`{"error":"marshalling json obj failed"}`))
-    return
-  }
-
-  w.WriteHeader(code)
-  w.Write([]byte(`{"success":"` + string(rtn) +`"}`))
-}
-
-func JSONError(w http.ResponseWriter, code int, s string, args ...interface{}) {
-  rtn,err := json.Marshal(fmt.Sprintf(s, args...))
-  if err != nil {
-    w.WriteHeader(http.StatusInternalServerError)
-    w.Write([]byte(`{"error":"marshalling json obj failed"}`))
-    return
-  }
-
-  w.WriteHeader(code)
-  w.Write([]byte(`{"error":"` + string(rtn) +`"}`))
-}
 
 type SamplrHTTP struct {
   Samples *samplr.Samplr
+}
+
+type AddSampleRequest struct {
+  Name        string
+  Method      string
+  URL         string
+  Body        string
+  Headers     http.Header
+  Period      string
+  SampleRange string
+}
+
+func (s *SamplrHTTP) AddSample(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+  var request = &AddSampleRequest{}
+
+  if JSONRequest(w, r, request) {
+    return
+  }
+
+  if len(request.Name) < 1 || len(request.URL) < 1 || len(request.Period) < 1 || len(request.SampleRange) < 1 {
+    JSONError(w, http.StatusBadRequest, "Missing a required field (Name, URL, Period, SampleRange).")
+    return
+  }
+
+  if len(request.Method) < 1 {
+    request.Method = "GET"
+  }
+
+  period, err := time.ParseDuration(request.Period)
+  if err != nil {
+    JSONError(w, http.StatusBadRequest, "Parsing period: " + err.Error())
+    return
+  }
+
+  sampleRange, err := time.ParseDuration(request.SampleRange)
+  if err != nil {
+    JSONError(w, http.StatusBadRequest, "Parsing SampleRange: " + err.Error())
+    return
+  }
+
+  err = s.Samples.AddSampleSet(request.Name, request.Method, request.URL, 
+    []byte(request.Body), request.Headers, period, sampleRange)
+  if err != nil {
+    JSONError(w, http.StatusBadRequest, "Adding samples failed: " + err.Error())
+    return
+  }
+
+  JSONSuccess(w, http.StatusOK, request.Name + " added successfully.")
+}
+
+func (s *SamplrHTTP) Delete(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+  name := params.ByName("name")
+
+  err := s.Samples.RemoveSampleSet(name)
+  if err != nil {
+    JSONError(w, http.StatusBadRequest, err.Error())
+    return
+  }
+
+  JSONSuccess(w, http.StatusOK, name + " removed successfully.")
 }
 
 func (s *SamplrHTTP) SampleList(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -90,21 +90,55 @@ func (s *SamplrHTTP) ReadN(w http.ResponseWriter, r *http.Request, params httpro
   name := params.ByName("name")
   scount := params.ByName("count")
 
-  _,_ = name,scount
+  // eating error is fine, count = 0
+  count,_ := strconv.Atoi(scount)
+
+  samples, err := s.Samples.ReadNSamples(name, count)
+  if err != nil {
+    JSONError(w, http.StatusBadRequest, err.Error())
+    return
+  }
+
+  JSONResponse(w, http.StatusOK, samples)
 }
 
 func (s *SamplrHTTP) ReadSince(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
   name := params.ByName("name")
   stimestamp := params.ByName("timestamp")
 
-  _,_ = name,stimestamp
+  timestamp,err := time.Parse("", stimestamp)
+  if err != nil {
+    JSONError(w, http.StatusBadRequest, "Parsing timestamp failed: " + err.Error())
+    return
+  }
+
+  samples, err := s.Samples.ReadSamplesSince(name, timestamp)
+  if err != nil {
+    JSONError(w, http.StatusBadRequest, err.Error())
+    return
+  }
+
+  JSONResponse(w, http.StatusOK, samples)
 }
 
 func (s *SamplrHTTP) ReadRange(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
   name := params.ByName("name")
   stimerange := params.ByName("timerange")
 
-  _,_ = name,stimerange
+
+  timerange,err := time.ParseDuration(stimerange)
+  if err != nil {
+    JSONError(w, http.StatusBadRequest, "Parsing timestamp failed: " + err.Error())
+    return
+  }
+
+  samples, err := s.Samples.ReadSamplesRange(name, timerange)
+  if err != nil {
+    JSONError(w, http.StatusBadRequest, err.Error())
+    return
+  }
+
+  JSONResponse(w, http.StatusOK, samples)
 }
 
 func main() {
@@ -113,10 +147,14 @@ func main() {
   }
 
   router := httprouter.New()
+  router.POST("/samples", samples.AddSample)
+
   router.GET("/samples", samples.SampleList)
   router.GET("/samples/:name/count/:count", samples.ReadN)
   router.GET("/samples/:name/since/:timestamp", samples.ReadSince)
   router.GET("/samples/:name/timerange/:timerange", samples.ReadRange)
+
+  router.DELETE("/samples/:name", samples.Delete)
 
   log.Fatal(http.ListenAndServe(":8080", router))
 }
