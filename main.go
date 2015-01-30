@@ -193,5 +193,7 @@ func main() {
 
 	router.DELETE("/samples/:name", samples.Delete)
 
+	router.GET("/plots/line/count/:count/:paths", samples.LinePlotCount)
+
 	log.Fatal(http.ListenAndServe(":8080", router))
 }
