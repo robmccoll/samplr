@@ -1,12 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/julienschmidt/httprouter"
+	"github.com/placeybordeaux/configr/unmarshaler"
 
 	"github.com/robmccoll/samplr/gosamplr"
 )
@@ -173,7 +175,15 @@ func (s *SamplrHTTP) ReadRange(w http.ResponseWriter, r *http.Request, params ht
 	JSONResponse(w, http.StatusOK, samples)
 }
 
+type configuration struct {
+	Port int64 `env:"PORT" cli:"port" desc:"Http port to listen on"`
+}
+
+var config = configuration{8080}
+
 func main() {
+	configr.UnmarshalFromEnv(&config)
+	configr.UnmarshalFromFlags(&config)
 	samples := &SamplrHTTP{
 		Samples: &samplr.Samplr{Sets: make(map[string]*samplr.SampleSet)},
 	}
@@ -195,5 +205,5 @@ func main() {
 
 	router.GET("/plots/line/count/:count/:paths", samples.LinePlotCount)
 
-	log.Fatal(http.ListenAndServe(":8080", router))
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%v", config.Port), router))
 }
