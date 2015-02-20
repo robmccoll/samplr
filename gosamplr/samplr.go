@@ -10,6 +10,7 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/robmccoll/samplr/influxdb"
 )
 
 type Sample struct {
@@ -32,6 +33,8 @@ type SampleSet struct {
 	Stopper     chan bool
 
 	Samples []*Sample
+
+	CallbackFunc func(Sample)
 }
 
 type ExpectedTimeAndCount struct {
@@ -117,6 +120,9 @@ func (set *SampleSet) Collect() {
 				}
 
 				set.Lock.Unlock()
+				if set.CallbackFunc != nil {
+					set.CallbackFunc(*sample)
+				}
 			}
 		case _ = <-set.Stopper:
 			close(set.Stopper)
@@ -126,8 +132,9 @@ func (set *SampleSet) Collect() {
 }
 
 type Samplr struct {
-	Lock sync.RWMutex
-	Sets map[string]*SampleSet
+	Lock      sync.RWMutex
+	Sets      map[string]*SampleSet
+	InfluxURL string
 }
 
 func (s *Samplr) AddSampleSet(name, method, url string, body []byte, headers http.Header, period time.Duration, sampleRange time.Duration) error {
@@ -149,11 +156,21 @@ func (s *Samplr) AddSampleSet(name, method, url string, body []byte, headers htt
 		Stopper:     make(chan bool, 1),
 	}
 
+	if s.InfluxURL != "" {
+		set.CallbackFunc = PostToInfluxCallback(s.InfluxURL, name)
+	}
+
 	s.Sets[name] = set
 
 	go set.Collect()
 
 	return nil
+}
+
+func PostToInfluxCallback(influxURL string, name string) func(Sample) {
+	return func(s Sample) {
+		go influxdb.PostToInflux(influxURL, name, s.Data)
+	}
 }
 
 func (s *Samplr) RemoveSampleSet(name string) error {

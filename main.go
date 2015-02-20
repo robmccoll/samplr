@@ -176,10 +176,11 @@ func (s *SamplrHTTP) ReadRange(w http.ResponseWriter, r *http.Request, params ht
 }
 
 type configuration struct {
-	Port int64 `env:"PORT" cli:"port" desc:"Http port to listen on"`
+	Port      int64  `env:"PORT" cli:"port" desc:"Http port to listen on"`
+	InfluxURL string `env:"INFLUX_URL" cli:"influx" desc:"The URL to post to influx with. ex: http://localhost:8086/db/default/series?u=root&p=root"`
 }
 
-var config = configuration{8080}
+var config = configuration{Port: 8080}
 
 func main() {
 	configr.UnmarshalFromEnv(&config)
