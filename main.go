@@ -186,7 +186,7 @@ func main() {
 	configr.UnmarshalFromEnv(&config)
 	configr.UnmarshalFromFlags(&config)
 	samples := &SamplrHTTP{
-		Samples: &samplr.Samplr{Sets: make(map[string]*samplr.SampleSet)},
+		Samples: &samplr.Samplr{Sets: make(map[string]*samplr.SampleSet), InfluxURL: config.InfluxURL},
 	}
 
 	router := httprouter.New()

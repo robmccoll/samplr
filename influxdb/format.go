@@ -3,6 +3,7 @@ package influxdb
 import (
 	"bytes"
 	"encoding/json"
+	"io/ioutil"
 	"net/http"
 
 	"github.com/Sirupsen/logrus"
@@ -19,7 +20,7 @@ func flatten(in map[string]map[string]float64) map[string]float64 {
 	return out
 }
 
-func influx_fmt(maps []map[string]float64, name string) map[string]interface{} {
+func influx_fmt(maps []map[string]float64, name string) []map[string]interface{} {
 	out := make(map[string]interface{})
 	out["name"] = name
 	cols := make([]string, 0)
@@ -37,15 +38,16 @@ func influx_fmt(maps []map[string]float64, name string) map[string]interface{} {
 		points = append(points, row)
 	}
 	out["points"] = points
-	return out
+	return []map[string]interface{}{out}
 }
 
 func PostToInflux(influxURL string, name string, b []byte) {
+	logrus.Info("Posing to influx")
 	m := make(map[string]map[string]float64)
-	err := json.Unmarshal(b, m)
+	err := json.Unmarshal(b, &m)
 	if err != nil {
 		logrus.Error(string(b))
-		logrus.Error("Failed to unmarshal as expected")
+		logrus.WithField("err", err).Error("Failed to unmarshal as expected")
 	}
 	fmtted := influx_fmt([]map[string]float64{flatten(m)}, name)
 
@@ -54,9 +56,16 @@ func PostToInflux(influxURL string, name string, b []byte) {
 		logrus.Error(err)
 		return
 	}
-	_, err = http.Post(influxURL, "application/json", bytes.NewReader(b))
+	resp, err := http.Post(influxURL, "application/json", bytes.NewReader(b))
 	if err != nil {
 		logrus.Error(err)
 		return
 	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		respbody, _ := ioutil.ReadAll(resp.Body)
+		logrus.WithField("StatusCode", resp.StatusCode).WithField("resp.body", string(respbody)).WithField("Posted", string(b)).Error("Non 200 from influxdb")
+	}
+
+	logrus.Info("Posted to influx")
 }
